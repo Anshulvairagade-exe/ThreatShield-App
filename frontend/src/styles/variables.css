@@ -1,0 +1,66 @@
+:root {
+  /* ThreatShield professional SOC palette */
+  --bg-primary: #0B0F14;
+  --bg-secondary: #0E131A;
+  --bg-surface: #111820;
+  --bg-surface-2: #151D26;
+  --bg-surface-hover: #1A232E;
+  --bg-card: #111820;
+
+  /* Borders */
+  --border-subtle: #1E2833;
+  --border-card: #232E3B;
+  --border-focus: #3B82F6;
+
+  /* Typography */
+  --text-primary: #FFFFFF;
+  --text-secondary: #9AA4B2;
+  --text-muted: #5F6B7A;
+  --text-code: #7FB3E8;
+
+  /* Semantic colors ONLY — red/orange/yellow/blue/green */
+  --sev-critical: #E5484D;
+  --sev-critical-bg: rgba(229, 72, 77, 0.12);
+  --sev-high: #F76B15;
+  --sev-high-bg: rgba(247, 107, 21, 0.12);
+  --sev-medium: #FFC53D;
+  --sev-medium-bg: rgba(255, 197, 61, 0.12);
+  --sev-low: #3E9BEB;
+  --sev-low-bg: rgba(62, 155, 235, 0.12);
+  --sev-healthy: #46A758;
+  --sev-healthy-bg: rgba(70, 167, 88, 0.12);
+
+  --accent: #3E9BEB;
+  --accent-hover: #5AA9EE;
+
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+
+  /* Layout */
+  --sidebar-width: 232px;
+  --topbar-height: 52px;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+
+  /* Elevation */
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.4);
+
+  /* Legacy aliases (old theme vars mapped forward — do not use in new code) */
+  --severity-critical: var(--sev-critical);
+  --severity-high: var(--sev-high);
+  --severity-medium: var(--sev-medium);
+  --severity-low: var(--sev-low);
+  --status-healthy: var(--sev-healthy);
+  --status-isolated: #8E4EC6;
+  --severity-critical-bg: var(--sev-critical-bg);
+  --severity-high-bg: var(--sev-high-bg);
+  --severity-medium-bg: var(--sev-medium-bg);
+  --severity-low-bg: var(--sev-low-bg);
+  --status-healthy-bg: var(--sev-healthy-bg);
+  --status-isolated-bg: rgba(142, 78, 198, 0.12);
+  --bg-glass: var(--bg-surface);
+  --border-glow: none;
+  --shadow-glow: none;
+  --navbar-height: var(--topbar-height);
+  --radius-lg: 6px;
+}

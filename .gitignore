@@ -1,0 +1,34 @@
+# Dependencies (lockfiles ARE committed for reproducible builds)
+node_modules/
+
+# Env & secrets — NEVER commit real credentials
+.env
+backend/.env
+frontend/.env
+!backend/.env.example
+!frontend/.env.example
+
+# Databases (local stand-ins; prod uses PostgreSQL)
+*.db
+*.sqlite
+*.sqlite3
+threat_intel/data/
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+venv/
+
+# Builds & logs
+frontend/dist/
+*.log
+nohup.out
+
+# OS / editors
+.DS_Store
+.vscode/
+
+# Duplicate archive of the model package (the extracted folder is tracked)
+zero_day_model_package (1).zip

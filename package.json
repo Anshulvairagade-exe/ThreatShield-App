@@ -1,0 +1,12 @@
+{
+  "name": "threat-shield-root",
+  "private": true,
+  "scripts": {
+    "start": "concurrently --names backend,frontend \"cd threat_intel && \\\"C:\\\\Users\\\\vedap\\\\AppData\\\\Local\\\\Microsoft\\\\WindowsApps\\\\PythonSoftwareFoundation.Python.3.13_qbz5n2kfra8p0\\\\python.exe\\\" -m uvicorn api:app --host 127.0.0.1 --port 8001\" \"npm --prefix frontend run dev\"",
+    "dev": "concurrently --names backend,frontend \"cd threat_intel && \\\"C:\\\\Users\\\\vedap\\\\AppData\\\\Local\\\\Microsoft\\\\WindowsApps\\\\PythonSoftwareFoundation.Python.3.13_qbz5n2kfra8p0\\\\python.exe\\\" -m uvicorn api:app --host 127.0.0.1 --port 8001\" \"npm --prefix frontend run dev\"",
+    "build": "npm --prefix frontend run build"
+  },
+  "devDependencies": {
+    "concurrently": "^10.0.5"
+  }
+}
