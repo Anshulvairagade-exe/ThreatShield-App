@@ -4,6 +4,7 @@ Covers every technique the platform can emit (behavioral rules + TI mapper)
 plus the tactics matrix the frontend currently hardcodes, so MITRE stops
 being frontend mock data and becomes backend truth.
 """
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.models import MitreTechnique
@@ -68,13 +69,23 @@ def technique_meta(technique_id: str) -> tuple[str, str]:
     return "Unknown", technique_id
 
 
+def ensure_technique(db: Session, technique_id: str, tactic: str, name: str, subtechnique: str = "") -> None:
+    """Upsert one technique, safe under concurrent seeders (multi-worker boot)."""
+    try:
+        with db.begin_nested():
+            row = db.query(MitreTechnique).filter(MitreTechnique.technique_id == technique_id).first()
+            if row is None:
+                db.add(MitreTechnique(technique_id=technique_id, tactic=tactic, name=name,
+                                      subtechnique=subtechnique))
+            else:
+                row.tactic, row.name, row.subtechnique = tactic, name, subtechnique
+    except IntegrityError:
+        pass  # a concurrent worker won the race; the row exists now
+
+
 def seed_catalog(db: Session) -> int:
     """Upsert the full catalogue. Returns number of techniques ensured."""
     for tid, (tactic, _tactic_id, name, sub) in CATALOG.items():
-        row = db.query(MitreTechnique).filter(MitreTechnique.technique_id == tid).first()
-        if row is None:
-            db.add(MitreTechnique(technique_id=tid, tactic=tactic, name=name, subtechnique=sub))
-        else:
-            row.tactic, row.name, row.subtechnique = tactic, name, sub
+        ensure_technique(db, tid, tactic, name, sub)
     db.commit()
     return len(CATALOG)

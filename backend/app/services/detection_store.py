@@ -2,8 +2,8 @@
 from sqlalchemy.orm import Session
 
 from app.detection import DetectionResult
-from app.models import Alert, Detection, DetectionMitre, MitreTechnique
-from app.services.mitre_catalog import technique_meta
+from app.models import Alert, Detection, DetectionMitre
+from app.services.mitre_catalog import ensure_technique
 
 # Backwards-compat alias (canonical data now lives in mitre_catalog.CATALOG).
 TECHNIQUE_META = {
@@ -22,10 +22,13 @@ TECHNIQUE_META = {
 
 
 def ensure_technique_rows(db: Session, technique_ids: list[str]) -> None:
+    from app.services.mitre_catalog import CATALOG
     for tid in technique_ids:
-        if db.query(MitreTechnique).filter(MitreTechnique.technique_id == tid).first() is None:
-            tactic, name = technique_meta(tid)
-            db.add(MitreTechnique(technique_id=tid, tactic=tactic, name=name))
+        entry = CATALOG.get(tid)
+        if entry:
+            ensure_technique(db, tid, entry[0], entry[2], entry[3])
+        else:
+            ensure_technique(db, tid, "Unknown", tid)
     db.flush()
 
 
