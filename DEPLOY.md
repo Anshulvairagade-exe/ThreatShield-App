@@ -37,6 +37,7 @@ UVICORN_WORKERS=2
 ABUSEIPDB_API_KEY=<key>                        # optional; collectors degrade without keys
 OTX_API_KEY=<key>
 ABUSECH_AUTH_KEY=<key>
+VT_API_KEY=<key>                               # VirusTotal enrichment (free tier: ~4 lookups/min)
 ```
 
 Compose-level (shell env or CI secrets):

@@ -90,12 +90,12 @@ def test_refresh_with_empty_feeds():
     import app.services.threat_intel as svc
 
     c = _client()
-    orig = ti_logic.collect_all
-    ti_logic.collect_all = lambda: []
-    svc.ti_logic.collect_all = lambda: []
+    orig = ti_logic.collect_all_status
+    ti_logic.collect_all_status = lambda: {"records": [], "feeds": []}
+    svc.ti_logic.collect_all_status = lambda: {"records": [], "feeds": []}
     try:
         r = c.post("/api/v1/ti/refresh")
         assert r.status_code == 200 and r.json()["raw"] == 0
     finally:
-        ti_logic.collect_all = orig
-        svc.ti_logic.collect_all = orig
+        ti_logic.collect_all_status = orig
+        svc.ti_logic.collect_all_status = orig

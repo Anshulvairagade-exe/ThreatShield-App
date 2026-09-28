@@ -16,8 +16,9 @@ which feed a record came from:
 """
 
 import requests
+import base64
 import datetime
-from config import ABUSEIPDB_API_KEY, OTX_API_KEY, ABUSECH_AUTH_KEY, REQUEST_TIMEOUT
+from config import ABUSEIPDB_API_KEY, OTX_API_KEY, ABUSECH_AUTH_KEY, VT_API_KEY, REQUEST_TIMEOUT
 
 
 def _now_iso():
@@ -141,6 +142,107 @@ def collect_all():
     records += collect_otx()
     print(f"[collect_all] pulled {len(records)} raw records")
     return records
+
+
+def feed_status():
+    """Static per-feed wiring state: is this source configured right now?"""
+    return [
+        {"source": "AbuseIPDB", "configured": bool(ABUSEIPDB_API_KEY),
+         "mode": "feed", "needs_key": True, "key_url": "https://www.abuseipdb.com/register"},
+        {"source": "URLhaus", "configured": True,
+         "mode": "feed", "needs_key": False,
+         "note": "works keyless; abuse.ch Auth-Key raises rate limits (https://auth.abuse.ch/)"},
+        {"source": "MalwareBazaar", "configured": bool(ABUSECH_AUTH_KEY),
+         "mode": "feed", "needs_key": True, "key_url": "https://auth.abuse.ch/"},
+        {"source": "OTX", "configured": bool(OTX_API_KEY),
+         "mode": "feed", "needs_key": True, "key_url": "https://otx.alienvault.com/"},
+        {"source": "VirusTotal", "configured": bool(VT_API_KEY),
+         "mode": "enrichment", "needs_key": True, "key_url": "https://www.virustotal.com/gui/join-us",
+         "note": "free tier is query-based (4 lookups/min), not a bulk feed"},
+    ]
+
+
+def collect_all_status():
+    """Same as collect_all() but also reports per-feed outcome.
+
+    Returns {"records": [...], "feeds": [{"source", "status", "records", ...}]}.
+    collect_all() is unchanged for backwards compatibility.
+    """
+    merged = []
+    feeds = []
+    for name, fn in [("AbuseIPDB", collect_abuseipdb), ("URLhaus", collect_urlhaus),
+                     ("MalwareBazaar", collect_malwarebazaar), ("OTX", collect_otx)]:
+        try:
+            recs = fn()
+            merged += recs
+            feeds.append({"source": name, "status": "ok", "records": len(recs)})
+        except Exception as e:
+            feeds.append({"source": name, "status": "error", "records": 0, "error": str(e)})
+    print(f"[collect_all_status] pulled {len(merged)} raw records")
+    return {"records": merged, "feeds": feeds}
+
+
+def lookup_virustotal(value, ioc_type=None):
+    """Live VirusTotal v3 lookup for one indicator (enrichment, not a feed).
+
+    Returns a raw-record-shaped dict, or None when: no API key configured,
+    VT has never seen the value (HTTP 404 = clean/unknown), or the type is
+    unsupported. reputation_hint scales with vendor detections:
+    min(99, 55 + 3 * malicious_votes) when malicious > 0, else None.
+    """
+    import urllib.parse
+
+    if not VT_API_KEY:
+        return None
+    value = (value or "").strip()
+    if not value:
+        return None
+    if not ioc_type:
+        from validator import detect_type
+        ioc_type = detect_type(value)
+    if ioc_type == "ip":
+        endpoint = f"ip_addresses/{value}"
+    elif ioc_type == "domain":
+        endpoint = f"domains/{value}"
+    elif ioc_type in ("hash_md5", "hash_sha1", "hash_sha256"):
+        endpoint = f"files/{value.lower()}"
+    elif ioc_type == "url":
+        url_id = base64.urlsafe_b64encode(value.encode()).decode().rstrip("=")
+        endpoint = f"urls/{urllib.parse.quote(url_id, safe='')}"
+    else:
+        return None
+
+    try:
+        resp = requests.get(f"https://www.virustotal.com/api/v3/{endpoint}",
+                            headers={"x-apikey": VT_API_KEY}, timeout=REQUEST_TIMEOUT)
+        if resp.status_code == 404:
+            return None
+        resp.raise_for_status()
+        attrs = resp.json().get("data", {}).get("attributes", {})
+    except requests.RequestException as e:
+        print(f"[VirusTotal] lookup failed for {value}: {e}")
+        return None
+
+    stats = attrs.get("last_analysis_stats", {}) or {}
+    malicious = int(stats.get("malicious", 0) or 0)
+    tags = set()
+    for cat in (attrs.get("categories") or {}).values():
+        if cat:
+            tags.add(str(cat).lower())
+    for t in attrs.get("tags") or []:
+        tags.add(str(t).lower())
+    if attrs.get("country"):
+        tags.add(f"country:{attrs['country']}")
+    reputation = min(99, 55 + 3 * malicious) if malicious > 0 else None
+    return {
+        "raw_value": value,
+        "type_hint": {"ip": "ip", "domain": "domain", "url": "url"}.get(ioc_type, "hash"),
+        "source": "VirusTotal",
+        "reputation_hint": reputation,
+        "tags": sorted(tags),
+        "seen_at": _now_iso(),
+        "vt_malicious_votes": malicious,
+    }
 
 
 if __name__ == "__main__":
