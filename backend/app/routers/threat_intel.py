@@ -12,6 +12,17 @@ from app.services.threat_intel import ti_logic
 router = APIRouter()
 
 
+@router.get("/ti/lookup")
+def lookup_ioc_query(value: str = Query(...), type: str | None = Query(default=None),
+                     db: Session = Depends(get_db)):
+    """Query-param IOC lookup — use this for values containing slashes.
+
+    Uvicorn percent-decodes %2F before routing, so full URLs 404 on the
+    /ti/ioc/{value} path form. Same response contract.
+    """
+    return ti_service.lookup_ioc(db, value, type)
+
+
 @router.get("/ti/ioc/{value}")
 def get_ioc(value: str, type: str | None = Query(default=None), db: Session = Depends(get_db)):
     """GET /api/v1/ti/ioc/{value}?type=ip — same contract as :8001 /ioc/{value}."""

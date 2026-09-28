@@ -125,6 +125,17 @@ def test_refresh_records_feed_runs_and_enrich_vt_skips_without_key():
     assert bad.status_code == 422
 
 
+def test_lookup_query_form_handles_slashes():
+    c = _client()
+    with TestingSession() as db:
+        PostgresIOCRepository(db).upsert(
+            {"ioc": "http://evil.example/x", "type": "url", "sources": ["URLhaus"], "tags": [],
+             "reputation": None, "confidence": 0.6, "mitre": ["T1071"],
+             "first_seen": "2026-01-01", "last_seen": "2026-01-02", "status": "Active"})
+    r = c.get("/api/v1/ti/lookup", params={"value": "http://evil.example/x", "type": "url"})
+    assert r.status_code == 200 and r.json()["found"] is True
+
+
 def test_enrich_vt_backfills_reputation(monkeypatch):
     import collectors
 
