@@ -1,24 +1,31 @@
 """ResponseEngine — controlled response abstraction.
 
-Actions: BLOCK_IOC, ISOLATE_HOST, DISABLE_USER, CREATE_INCIDENT, NOTIFY_ANALYST.
+Actions: BLOCK_IOC, ISOLATE_HOST, DISABLE_USER, CREATE_INCIDENT, NOTIFY_ANALYST,
+plus reverts RESTORE_HOST, UNBLOCK_IOC, ENABLE_USER.
 States: REQUESTED → APPROVED → EXECUTING → SUCCESS | FAILED, or REJECTED.
 
 Safety:
 - mode defaults to SIMULATION; LIVE execution is disabled by policy and
   fails safe (FAILED + audit) unless explicitly enabled.
 - High-severity incidents auto-approve per ACTION_POLICY; anything else
-  waits for analyst approval via approve()/reject().
+  waits for analyst approval via approve()/reject(). Reverts are safe
+  operations and auto-approve.
 - Every state change writes an audit row.
+- A revert requires a matching SUCCESS action on the same target+incident.
 """
 from datetime import datetime
 
 from sqlalchemy.orm import Session
 
-from app.models import AppUser, Asset, Incident, ResponseAction
+from app.models import AppUser, Asset, Incident, IocBlock, ResponseAction
 from app.services import incidents as incident_service
 from app.services.audit import log
 
-ACTION_TYPES = ("BLOCK_IOC", "ISOLATE_HOST", "DISABLE_USER", "CREATE_INCIDENT", "NOTIFY_ANALYST")
+ACTION_TYPES = ("BLOCK_IOC", "ISOLATE_HOST", "DISABLE_USER", "CREATE_INCIDENT", "NOTIFY_ANALYST",
+                "RESTORE_HOST", "UNBLOCK_IOC", "ENABLE_USER")
+
+# revert action -> the action type it reverses
+REVERTS = {"RESTORE_HOST": "ISOLATE_HOST", "UNBLOCK_IOC": "BLOCK_IOC", "ENABLE_USER": "DISABLE_USER"}
 
 # action -> minimum incident severity that auto-approves (None = always needs approval)
 ACTION_POLICY: dict[str, str | None] = {
@@ -27,6 +34,9 @@ ACTION_POLICY: dict[str, str | None] = {
     "DISABLE_USER": None,
     "CREATE_INCIDENT": "LOW",
     "NOTIFY_ANALYST": "LOW",
+    "RESTORE_HOST": "LOW",
+    "UNBLOCK_IOC": "LOW",
+    "ENABLE_USER": "LOW",
 }
 
 _SEV_RANK = {"LOW": 0, "MEDIUM": 1, "HIGH": 2, "CRITICAL": 3}
@@ -65,7 +75,30 @@ def _simulated_effect(db: Session, action: ResponseAction) -> str:
             return f"SIMULATED: {action.target} marked isolated in twin state"
         return f"SIMULATED: isolate recorded for unknown host {action.target}"
     if action.type == "BLOCK_IOC":
+        block = db.query(IocBlock).filter(IocBlock.ioc == action.target).first()
+        if block is None:
+            db.add(IocBlock(ioc=action.target, status="BLOCKED", updated_at=datetime.utcnow()))
+        else:
+            block.status, block.updated_at = "BLOCKED", datetime.utcnow()
         return f"SIMULATED: perimeter block recorded for {action.target}"
+    if action.type == "UNBLOCK_IOC":
+        block = db.query(IocBlock).filter(IocBlock.ioc == action.target).first()
+        if block is None or block.status != "BLOCKED":
+            return f"SIMULATED: {action.target} was not blocked — nothing to remove"
+        block.status, block.updated_at = "ALLOWED", datetime.utcnow()
+        return f"SIMULATED: perimeter block removed for {action.target}"
+    if action.type == "RESTORE_HOST":
+        asset = db.query(Asset).filter(Asset.hostname == action.target).first()
+        if asset and asset.status == "isolated":
+            asset.status = "healthy"
+            return f"SIMULATED: {action.target} restored to service in twin state"
+        return f"SIMULATED: {action.target} was not isolated — nothing to restore"
+    if action.type == "ENABLE_USER":
+        user = db.query(AppUser).filter(AppUser.name == action.target).first()
+        if user and user.disabled:
+            user.disabled = 0
+            return f"SIMULATED: {action.target} re-enabled"
+        return f"SIMULATED: {action.target} was not disabled — nothing to restore"
     if action.type == "DISABLE_USER":
         user = db.query(AppUser).filter(AppUser.name == action.target).first()
         if user:
@@ -87,6 +120,14 @@ def request_action(db: Session, incident: Incident, action_type: str, target: st
         raise InvalidActionError(f"Unknown mode '{mode}'")
     action = ResponseAction(incident_id=incident.id, type=action_type, mode=mode,
                             status="REQUESTED", actor=actor or "", target=target or "")
+    if action_type in REVERTS:
+        original = REVERTS[action_type]
+        prior = db.query(ResponseAction).filter(
+            ResponseAction.incident_id == incident.id, ResponseAction.target == (target or ""),
+            ResponseAction.type == original, ResponseAction.status == "SUCCESS").first()
+        if not prior:
+            raise InvalidActionError(
+                f"Cannot {action_type}: no successful {original} on '{target}' in this incident")
     db.add(action)
     db.flush()
     _audit(db, action, "REQUESTED", actor)

@@ -196,6 +196,14 @@ class ResponseAction(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=_now)
 
 
+class IocBlock(Base):
+    """Current block state per IOC — BLOCK_IOC sets BLOCKED, UNBLOCK_IOC clears it."""
+    __tablename__ = "ioc_blocks"
+    ioc: Mapped[str] = mapped_column(String(1024), primary_key=True)
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="BLOCKED")
+    updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=_now)
+
+
 class AuditLog(Base):
     __tablename__ = "audit_logs"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)

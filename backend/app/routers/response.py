@@ -68,11 +68,36 @@ def notify_analyst(incident_id: str, body: ActionRequest, db: Session = Depends(
     return _request(db, incident_id, "NOTIFY_ANALYST", body)
 
 
+@router.post("/incidents/{incident_id}/actions/restore")
+def restore_host(incident_id: str, body: ActionRequest, db: Session = Depends(get_db)):
+    return _request(db, incident_id, "RESTORE_HOST", body)
+
+
+@router.post("/incidents/{incident_id}/actions/unblock")
+def unblock_ioc(incident_id: str, body: ActionRequest, db: Session = Depends(get_db)):
+    return _request(db, incident_id, "UNBLOCK_IOC", body)
+
+
+@router.post("/incidents/{incident_id}/actions/enable-user")
+def enable_user(incident_id: str, body: ActionRequest, db: Session = Depends(get_db)):
+    return _request(db, incident_id, "ENABLE_USER", body)
+
+
 @router.get("/incidents/{incident_id}/actions")
 def list_actions(incident_id: str, db: Session = Depends(get_db)):
     _incident_or_404(db, incident_id)
     rows = db.query(ResponseAction).filter(ResponseAction.incident_id == incident_id).all()
     return {"count": len(rows), "actions": [_serialize(a) for a in rows]}
+
+
+@router.get("/ioc-blocks")
+def list_ioc_blocks(db: Session = Depends(get_db)):
+    """Currently enforced IOC blocks (BLOCKED minus UNBLOCKed)."""
+    from app.models import IocBlock
+    rows = db.query(IocBlock).filter(IocBlock.status == "BLOCKED").all()
+    return {"count": len(rows), "blocks": [
+        {"ioc": r.ioc, "status": r.status,
+         "updated_at": r.updated_at.isoformat() if r.updated_at else ""} for r in rows]}
 
 
 @router.post("/incidents/{incident_id}/actions/{action_id}/approve")

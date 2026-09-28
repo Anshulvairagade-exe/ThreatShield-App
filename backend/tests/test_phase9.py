@@ -110,3 +110,29 @@ def test_audit_listing_and_action_history():
     assert hist["count"] >= 1
     inv = c.get(f"/api/v1/incidents/{inc_id}/investigation").json()
     assert inv["response_actions"]
+
+
+def test_revert_actions_restore_state():
+    c = _client()
+    inc_id = _critical_incident(c)
+    # isolate then restore
+    iso = c.post(f"/api/v1/incidents/{inc_id}/actions/isolate",
+                 json={"target": "WIN-01", "actor": "soc-01"}).json()
+    assert iso["status"] == "SUCCESS"
+    res = c.post(f"/api/v1/incidents/{inc_id}/actions/restore",
+                 json={"target": "WIN-01", "actor": "soc-01"}).json()
+    assert res["status"] == "SUCCESS" and "restored" in res["result"]
+    # block then unblock
+    blk = c.post(f"/api/v1/incidents/{inc_id}/actions/block",
+                 json={"target": "185.220.101.5", "actor": "soc-01"}).json()
+    assert blk["status"] == "SUCCESS"
+    before = c.get("/api/v1/ioc-blocks").json()["count"]
+    assert before >= 1
+    unb = c.post(f"/api/v1/incidents/{inc_id}/actions/unblock",
+                 json={"target": "185.220.101.5", "actor": "soc-01"}).json()
+    assert unb["status"] == "SUCCESS" and "removed" in unb["result"]
+    assert c.get("/api/v1/ioc-blocks").json()["count"] == before - 1
+    # revert without a prior success is rejected
+    bad = c.post(f"/api/v1/incidents/{inc_id}/actions/restore",
+                 json={"target": "NEVER-ISOLATED", "actor": "soc-01"})
+    assert bad.status_code == 422

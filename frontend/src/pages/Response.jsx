@@ -35,6 +35,16 @@ export default function Response() {
     load();
   };
 
+  const REVERT = { ISOLATE_HOST: 'restore', BLOCK_IOC: 'unblock', DISABLE_USER: 'enable-user' };
+
+  const revert = async (action) => {
+    await apiPost(
+      `/api/v1/incidents/${encodeURIComponent(action.incident_id)}/actions/${REVERT[action.type]}`,
+      { target: action.target, actor: 'analyst', mode: 'SIMULATION' });
+    setConfirm(null);
+    load();
+  };
+
   return (
     <div>
       <PageHeader title="Response" sub="Controlled actions · approval enforced · simulation mode default" />
@@ -65,6 +75,11 @@ export default function Response() {
                         <button className="ts-btn small" onClick={() => setConfirm(a)}>Reject</button>
                       </span>
                     )}
+                    {a.status === 'SUCCESS' && REVERT[a.type] && (
+                      <button className="ts-btn small"
+                        onClick={() => setConfirm({ ...a, revert: true })}
+                        title={`Reverse this action (${REVERT[a.type]})`}>Revert</button>
+                    )}
                   </td>
                 </tr>
               ))}
@@ -72,9 +87,13 @@ export default function Response() {
           </table>
         </div>
       )}
-      {confirm && (
+      {confirm && !confirm.revert && (
         <Modal title="Reject action" body={`Reject ${confirm.type} on ${confirm.target}?`} confirmLabel="Reject"
           onCancel={() => setConfirm(null)} onConfirm={() => review(confirm, 'reject')} />
+      )}
+      {confirm && confirm.revert && (
+        <Modal title={`Reverse ${confirm.type}`} body={`Reverse ${confirm.type} on ${confirm.target}? The asset, block list and audit trail update accordingly.`} confirmLabel="Reverse action"
+          onCancel={() => setConfirm(null)} onConfirm={() => revert(confirm)} />
       )}
     </div>
   );
