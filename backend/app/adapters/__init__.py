@@ -113,12 +113,14 @@ class WazuhAdapter(BaseAdapter):
     Field map (implemented):
       timestamp -> timestamp | agent.name -> asset.hostname
       agent.ip -> asset.ip | rule.mitre.id[0] -> mitre_hint
-      rule.groups -> event_type (authentication→AUTH, syscheck→FILE,
-        web→WEB, ids→NETWORK, windows+process fields→PROCESS)
-      data.win.eventdata.{TargetUserName,SubjectUserName} -> user.name
+      rule.groups -> event_type (authentication*→AUTH incl. authentication_success,
+        syscheck→FILE, web→WEB, ids→NETWORK, windows+process fields→PROCESS)
+      data.win.eventdata.{TargetUserName,SubjectUserName} / data.{user,dstuser} -> user.name
       data.win.eventdata.{Image,ParentImage,CommandLine} -> process
-      srcip/dstip (+data.win.eventdata.{SourceIp,DestinationIp}) -> network
+      srcip/dstip/srcport/dstport -> network
       data.win.system.eventID -> authentication.event_code
+      authentication.logon_type is always numeric ("0" when the source has no
+        LogonType concept, e.g. Linux sshd) per the model preprocessor contract
       data.syscheck.{path} -> raw.file_path (FILE events)
     Intake: POST /api/v1/intake/wazuh, alerts.json tail, or manager API
     poll — see docs/wazuh.md. DetectionEngine is untouched.
@@ -141,7 +143,9 @@ class WazuhAdapter(BaseAdapter):
         mitre_hint = str(mitre_ids[0]) if mitre_ids else ""
 
         event_type = "ENDPOINT"
-        if "authentication" in groups or "authentication_failed" in groups:
+        is_auth = "authentication" in groups or any(
+            g == "authentication" or g.startswith("authentication_") for g in groups)
+        if is_auth:
             event_type = "AUTH"
         elif "syscheck" in groups:
             event_type = "FILE"
@@ -156,7 +160,8 @@ class WazuhAdapter(BaseAdapter):
 
         user = None
         username = (eventdata.get("TargetUserName") or eventdata.get("SubjectUserName")
-                    or eventdata.get("AccountName") or data.get("user") or "")
+                    or eventdata.get("AccountName") or data.get("user")
+                    or data.get("dstuser") or data.get("srcuser") or "")
         if username:
             user = UserInfo(name=str(username))
 
@@ -171,20 +176,35 @@ class WazuhAdapter(BaseAdapter):
         network = None
         src_ip = str(raw.get("srcip") or eventdata.get("SourceIp") or data.get("srcip") or "")
         dest_ip = str(raw.get("dstip") or eventdata.get("DestinationIp") or data.get("dstip") or "")
+        src_port = raw.get("srcport") or data.get("srcport")
         dest_port = raw.get("dstport") or eventdata.get("DestinationPort") or data.get("dstport")
-        if src_ip or dest_ip or dest_port:
+        if src_ip or dest_ip or src_port or dest_port:
+            try:
+                src_port = int(src_port) if src_port is not None else None
+            except (TypeError, ValueError):
+                src_port = None
             try:
                 dest_port = int(dest_port) if dest_port is not None else None
             except (TypeError, ValueError):
                 dest_port = None
-            network = NetworkInfo(src_ip=src_ip, dest_ip=dest_ip, dest_port=dest_port)
+            network = NetworkInfo(src_ip=src_ip, src_port=src_port,
+                                  dest_ip=dest_ip, dest_port=dest_port)
 
         auth = None
         event_code = str(system.get("eventID") or eventdata.get("EventID") or data.get("event_code") or "")
         if event_type == "AUTH" or event_code:
-            status = "FAILURE" if ("authentication_failed" in groups or "failed" in str(rule.get("description", "")).lower()) else ""
-            auth = AuthInfo(event_code=event_code, status=status,
-                            logon_type=str(eventdata.get("LogonType") or ""))
+            description = str(rule.get("description", "")).lower()
+            if "authentication_failed" in groups or "failed" in description:
+                status = "FAILURE"
+            elif "authentication_success" in groups or "success" in description:
+                status = "SUCCESS"
+            else:
+                status = ""
+            # Preprocessor contract: float(logon_type); "" raises ValueError.
+            # Windows carries a real LogonType; Linux sources have none, and 0
+            # truthfully encodes "not a type-3 network logon" to the model.
+            logon_type = str(eventdata.get("LogonType") or data.get("logon_type") or "0")
+            auth = AuthInfo(event_code=event_code, status=status, logon_type=logon_type)
 
         hostname = str(agent.get("name") or data.get("hostname") or "")
         return CanonicalSecurityEvent(
