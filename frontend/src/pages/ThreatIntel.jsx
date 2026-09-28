@@ -1,7 +1,7 @@
 import React from 'react';
 import { useApi } from '../hooks/useApi.js';
 import { apiGet } from '../services/api/client.js';
-import { lookupIocLive } from '../services/api/threatIntel.js';
+import { liveLookup, lookupIocLive } from '../services/api/threatIntel.js';
 import { getInvestigation } from '../services/api/incidents.js';
 import { ConnectionState, EmptyState, fmtTime, LoadingState, PageHeader, SeverityBadge } from '../components/ui.jsx';
 import DataTable from '../components/DataTable.jsx';
@@ -24,15 +24,25 @@ export default function ThreatIntel() {
   const alerts = useApi(() => apiGet('/api/v1/alerts?limit=500'), []);
   const incidents = useApi(() => apiGet('/api/v1/incidents?limit=200'), []);
   const [linked, setLinked] = React.useState({ alerts: [], incidents: [] });
+  const [live, setLive] = React.useState(null);
+  const [liveLoading, setLiveLoading] = React.useState(false);
 
   const search = async (e) => {
     e.preventDefault();
     const v = q.trim();
     if (!v) return;
     setSearching(true); setSearchError(null); setSearched(true);
+    setLive(null);
     try {
       const r = await lookupIocLive(v, detectType(v));
       setResult(r);
+      if (!r.found) {
+        // Repo miss → ask the integrated APIs live. Display-only.
+        setLiveLoading(true);
+        try { setLive(await liveLookup(v, detectType(v))); }
+        catch { setLive(null); }
+        finally { setLiveLoading(false); }
+      }
       const hitAlerts = (alerts.data ? alerts.data.alerts : []).filter((a) =>
         (a.reasons || []).some((x) => String(x).includes(v)));
       const incs = incidents.data ? incidents.data.incidents : [];
@@ -66,7 +76,33 @@ export default function ThreatIntel() {
         <div className="ts-card"><EmptyState title="Search an indicator" body="Results show reputation, confidence, sources and linked cases." /></div>
       )}
       {result && !result.found && (
-        <div className="ts-card"><EmptyState title="No record" body={`${result.ioc} is not in the repository — treated as clean.`} /></div>
+        <div className="ts-card ts-card-pad" style={{ marginBottom: 12 }}>
+          <div className="ts-section-title">Repository verdict: not reported</div>
+          <p className="ts-small ts-muted" style={{ marginBottom: 0 }}>
+            {result.ioc} was never pulled in by any feed — treated as clean unless live sources disagree.
+          </p>
+        </div>
+      )}
+      {result && !result.found && (liveLoading || live) && (
+        <div className="ts-card ts-card-pad" style={{ marginBottom: 12 }}>
+          <div className="ts-section-title">Live verdict · queried now across integrated APIs (not stored)</div>
+          {liveLoading && <p className="ts-small ts-muted">Asking AbuseIPDB / AbuseCH / OTX / VirusTotal…</p>}
+          {live && (
+            <>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8 }}>
+                <SeverityBadge severity={live.verdict === 'malicious' ? 'CRITICAL' : live.verdict === 'clean' ? 'LOW' : 'MEDIUM'} />
+                <strong style={{ fontSize: 13 }}>{live.verdict === 'malicious' ? 'Flagged malicious' : live.verdict === 'clean' ? 'No source flags it' : 'Could not check any source'}</strong>
+              </div>
+              <dl className="ts-kv">
+                <dt>Checked</dt><dd>{live.checked.length ? live.checked.join(', ') : '— (missing API keys?)'}</dd>
+                {live.flagged_by.length > 0 && <><dt>Flagged by</dt><dd>{live.flagged_by.join(', ')}</dd></>}
+                {Object.entries(live.details || {}).map(([src, d]) => (
+                  <React.Fragment key={src}><dt>{src}</dt><dd className="ts-small font-mono">{JSON.stringify(d)}</dd></React.Fragment>
+                ))}
+              </dl>
+            </>
+          )}
+        </div>
       )}
       {result && result.found && (
         <>

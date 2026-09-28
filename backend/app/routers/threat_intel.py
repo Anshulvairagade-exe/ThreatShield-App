@@ -29,6 +29,12 @@ def get_ioc(value: str, type: str | None = Query(default=None), db: Session = De
     return ti_service.lookup_ioc(db, value, type)
 
 
+@router.get("/ti/live-lookup")
+def live_lookup(value: str = Query(...), type: str | None = Query(default=None)):
+    """Live verdict across AbuseIPDB/AbuseCH/OTX/VirusTotal. Display-only, nothing stored."""
+    return ti_service.live_lookup(value, type)
+
+
 @router.get("/ti/stats")
 def ti_stats(db: Session = Depends(get_db)):
     return {"total_iocs": PostgresIOCRepository(db).count()}

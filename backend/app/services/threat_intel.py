@@ -72,6 +72,11 @@ def run_refresh(db: Session) -> dict:
     }
 
 
+def live_lookup(value: str, ioc_type: str | None = None) -> dict:
+    """Live cross-source verdict for a repo-miss indicator. Display-only."""
+    return ti_logic.live_lookup(value, ioc_type)
+
+
 def enrich_with_virustotal(db: Session, limit: int = 4) -> dict:
     """Backfill VirusTotal reputation onto stored IOCs missing it.
 

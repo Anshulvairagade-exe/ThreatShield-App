@@ -9,3 +9,8 @@ export const lookupIocLive = (value, type = null) => {
 };
 export const tiStats = () => apiGet('/api/v1/ti/stats');
 export const tiRefresh = () => apiPost('/api/v1/ti/refresh', {});
+export const liveLookup = (value, type = null) => {
+  const params = new URLSearchParams({ value });
+  if (type) params.set('type', type);
+  return apiGet(`/api/v1/ti/live-lookup?${params}`);
+};

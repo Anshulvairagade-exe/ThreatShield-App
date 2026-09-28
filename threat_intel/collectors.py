@@ -182,6 +182,88 @@ def collect_all_status():
     return {"records": merged, "feeds": feeds}
 
 
+def live_lookup(value, ioc_type=None):
+    """Query a repo-miss indicator LIVE across configured sources.
+
+    Display-only (nothing is stored): the verdict answers "what do our
+    integrated APIs say about this value right now".
+    Returns {"value", "type", "verdict": malicious|clean|unknown,
+             "checked": [...], "flagged_by": [...], "details": {...}}.
+    verdict = malicious if ANY source flags it; clean if at least one source
+    was checked and none flagged; unknown if nothing could be checked.
+    """
+    from validator import detect_type
+
+    value = (value or "").strip()
+    ioc_type = ioc_type or detect_type(value)
+    checked, flagged, details = [], [], {}
+
+    def _get(url, headers=None, params=None, timeout=REQUEST_TIMEOUT):
+        resp = requests.get(url, headers=headers or {}, params=params or {}, timeout=timeout)
+        resp.raise_for_status()
+        return resp.json()
+
+    # 1. URLhaus — exact-URL lookup, no key needed.
+    if ioc_type == "url":
+        try:
+            resp = requests.post("https://urlhaus-api.abuse.ch/v1/url/",
+                                 data={"url": value}, timeout=REQUEST_TIMEOUT)
+            data = resp.json()
+            checked.append("URLhaus")
+            if data.get("query_status") == "ok":
+                flagged.append("URLhaus")
+                details["URLhaus"] = {"threat": data.get("threat"),
+                                      "tags": data.get("tags"),
+                                      "reporter": data.get("reporter")}
+            else:
+                details["URLhaus"] = {"result": data.get("query_status")}
+        except requests.RequestException as e:
+            details["URLhaus"] = {"error": str(e)}
+
+    # 2. AbuseIPDB — reputation check, needs key.
+    if ioc_type == "ip" and ABUSEIPDB_API_KEY:
+        try:
+            data = _get("https://api.abuseipdb.com/api/v2/check",
+                        headers={"Key": ABUSEIPDB_API_KEY, "Accept": "application/json"},
+                        params={"ipAddress": value, "maxAgeInDays": 90})
+            score = int((data.get("data") or {}).get("abuseConfidenceScore", 0) or 0)
+            checked.append("AbuseIPDB")
+            details["AbuseIPDB"] = {"abuseConfidenceScore": score}
+            if score >= 50:
+                flagged.append("AbuseIPDB")
+        except requests.RequestException as e:
+            details["AbuseIPDB"] = {"error": str(e)}
+
+    # 3. OTX — pulse membership, needs key.
+    if OTX_API_KEY and ioc_type in ("ip", "domain", "url", "hash_md5", "hash_sha1", "hash_sha256"):
+        otype = {"ip": "IPv4", "domain": "domain", "url": "URL"}.get(
+            ioc_type, "FileHash")
+        try:
+            data = _get(f"https://otx.alienvault.com/api/v1/indicators/{otype}/{value}/general",
+                        headers={"X-OTX-API-KEY": OTX_API_KEY})
+            pulses = int((data.get("pulse_info") or {}).get("count", 0) or 0)
+            checked.append("OTX")
+            details["OTX"] = {"pulses": pulses}
+            if pulses > 0:
+                flagged.append("OTX")
+        except requests.RequestException as e:
+            details["OTX"] = {"error": str(e)}
+
+    # 4. VirusTotal — vendor votes, needs key.
+    if VT_API_KEY:
+        vt = lookup_virustotal(value, ioc_type)
+        if vt is not None:
+            checked.append("VirusTotal")
+            details["VirusTotal"] = {"malicious_votes": vt.get("vt_malicious_votes", 0),
+                                     "tags": vt.get("tags", [])}
+            if vt.get("vt_malicious_votes", 0) > 0:
+                flagged.append("VirusTotal")
+
+    verdict = "malicious" if flagged else ("clean" if checked else "unknown")
+    return {"value": value, "type": ioc_type, "verdict": verdict,
+            "checked": checked, "flagged_by": flagged, "details": details}
+
+
 def lookup_virustotal(value, ioc_type=None):
     """Live VirusTotal v3 lookup for one indicator (enrichment, not a feed).
 

@@ -19,7 +19,7 @@ for _cand in _TI_DIR_CANDIDATES:
         sys.path.insert(0, _abs)
         break
 
-from collectors import collect_all, collect_all_status, feed_status, lookup_virustotal  # noqa: E402,F401
+from collectors import collect_all, collect_all_status, feed_status, live_lookup, lookup_virustotal  # noqa: E402,F401
 from confidence import calculate_confidence, confidence_label  # noqa: E402,F401
 from dedup import deduplicate  # noqa: E402,F401
 from enrichment import enrich  # noqa: E402,F401

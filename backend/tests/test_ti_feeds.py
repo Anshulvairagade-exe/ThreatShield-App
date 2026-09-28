@@ -125,6 +125,70 @@ def test_refresh_records_feed_runs_and_enrich_vt_skips_without_key():
     assert bad.status_code == 422
 
 
+def test_live_lookup_urlhaus_flags_url(monkeypatch):
+    import collectors
+
+    class Resp:
+        def json(self):
+            return {"query_status": "ok", "threat": "malware_download", "tags": ["exe"]}
+
+    monkeypatch.setattr(collectors.requests, "post", lambda *a, **k: Resp())
+    out = ti_logic.live_lookup("http://evil.example/x", "url")
+    assert out["verdict"] == "malicious" and out["flagged_by"] == ["URLhaus"]
+
+
+def test_live_lookup_clean_ip(monkeypatch):
+    import collectors
+
+    monkeypatch.setattr(collectors, "ABUSEIPDB_API_KEY", "K")
+    monkeypatch.setattr(collectors, "VT_API_KEY", "")
+
+    class Resp:
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {"data": {"abuseConfidenceScore": 5}}
+
+    monkeypatch.setattr(collectors.requests, "get", lambda *a, **k: Resp())
+    out = ti_logic.live_lookup("9.9.9.9", "ip")
+    assert out["verdict"] == "clean" and out["checked"] == ["AbuseIPDB"]
+
+
+def test_live_lookup_unknown_without_keys(monkeypatch):
+    import collectors
+
+    for k in ("ABUSEIPDB_API_KEY", "OTX_API_KEY", "VT_API_KEY"):
+        monkeypatch.setattr(collectors, k, "")
+    out = ti_logic.live_lookup("9.9.9.9", "ip")
+    assert out["verdict"] == "unknown" and out["checked"] == []
+
+
+def test_live_lookup_otx_pulse_flags_domain(monkeypatch):
+    import collectors
+
+    monkeypatch.setattr(collectors, "OTX_API_KEY", "K")
+    monkeypatch.setattr(collectors, "VT_API_KEY", "")
+
+    class Resp:
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {"pulse_info": {"count": 3}}
+
+    monkeypatch.setattr(collectors.requests, "get", lambda *a, **k: Resp())
+    out = ti_logic.live_lookup("evil.example", "domain")
+    assert out["verdict"] == "malicious" and out["flagged_by"] == ["OTX"]
+
+
+def test_live_lookup_endpoint():
+    c = _client()
+    r = c.get("/api/v1/ti/live-lookup", params={"value": "9.9.9.9", "type": "ip"})
+    assert r.status_code == 200 and r.json()["verdict"] in ("clean", "unknown")
+    assert c.get("/api/v1/ti/live-lookup").status_code == 422  # value required
+
+
 def test_lookup_query_form_handles_slashes():
     c = _client()
     with TestingSession() as db:
