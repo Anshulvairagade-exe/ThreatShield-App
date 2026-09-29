@@ -38,6 +38,12 @@ def persist_results(results: list[DetectionResult], db: Session) -> list[Detecti
         db.add(Detection(id=res.detection_id, event_id=res.event_id, detector_type=res.detector_type,
                          rule_id=res.rule_id, severity=res.severity, confidence=res.confidence,
                          score=res.score, reasons=list(res.reasons), evidence=dict(res.evidence)))
+        # Flush the parent row before children reference it. A single commit
+        # still wraps the whole batch, but we no longer rely on the unit of
+        # work emitting same-flush parent/child inserts in dependency order —
+        # that ordering proved unreliable under FK enforcement (Postgres),
+        # while SQLite (FKs off) silently masked it.
+        db.flush()
         for tid in res.mitre_techniques:
             db.add(DetectionMitre(detection_id=res.detection_id, technique_id=tid))
         db.add(Alert(detection_id=res.detection_id, status="OPEN"))

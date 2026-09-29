@@ -121,3 +121,28 @@ def test_pipeline_separates_hosts_and_benign_creates_nothing():
         "event_id": "E-BENIGN", "event_type": "PROCESS", "hostname": "WS-QUIET",
         "image": "excel.exe", "parent_image": "explorer.exe", "command_line": "excel.exe ledger.xlsx"}})
     assert benign.json()["incident"] is None and benign.json()["detections"] == []
+
+
+def test_persist_results_survives_fk_enforcement():
+    """Regression: parent/child rows must persist with FKs enforced (Postgres behavior)."""
+    from sqlalchemy import event as sa_event
+
+    from app.detection import DetectionResult
+    from app.models import Alert, Detection
+    from app.services.detection_store import persist_results
+
+    eng = create_engine("sqlite:///./test_fk_enforced.db", connect_args={"check_same_thread": False})
+
+    @sa_event.listens_for(eng, "connect")
+    def _fk_on(dbapi_conn, rec):
+        dbapi_conn.execute("PRAGMA foreign_keys=ON")
+
+    Base.metadata.create_all(eng)
+    S = sessionmaker(bind=eng)
+    with S() as db:
+        res = DetectionResult(event_id="E-FK", detector_type="RULE", rule_id="suspicious_powershell",
+                              severity="HIGH", confidence=0.8, score=0.8, reasons=["x"],
+                              mitre_techniques=["T1059.001"], evidence={})
+        persist_results([res], db)
+        assert db.query(Detection).count() == 1
+        assert db.query(Alert).count() == 1
