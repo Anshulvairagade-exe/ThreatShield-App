@@ -69,8 +69,8 @@ export default function AttackReplayPage() {
           <button
             className="btn btn-primary"
             onClick={runLiveScenario}
-            disabled={liveRunning || !import.meta.env.VITE_API_BASE_URL}
-            title={import.meta.env.VITE_API_BASE_URL ? 'Run SCN-APT-01 through the live backend pipeline' : 'Set VITE_API_BASE_URL to enable live replay'}
+            disabled={liveRunning}
+            title={import.meta.env.VITE_API_BASE_URL ? 'Run SCN-APT-01 through the live backend pipeline' : 'Run demo replay (no backend needed)'}
             style={{ marginLeft: '12px' }}
           >
             {liveRunning ? 'RUNNING…' : 'RUN LIVE BACKEND'}

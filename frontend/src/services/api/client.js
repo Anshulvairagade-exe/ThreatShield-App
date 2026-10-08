@@ -1,12 +1,20 @@
 // Shared fetch client for the ThreatShield backend.
 // Base URL comes from VITE_API_BASE_URL (http://localhost:8000 local dev).
-// Every helper throws on failure so callers can fall back to mock data
-// while the backend is still incomplete.
+// When unset (Vercel/Netlify portfolio deploy) the UI runs on built-in
+// demo data from mockBackend.js — backend code is untouched.
+import { mockApiResponse } from '../mockData/mockBackend.js';
+
 const BASE_URL = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '');
 
 export const isBackendConfigured = () => BASE_URL.length > 0;
+export const isDemoMode = () => BASE_URL.length === 0;
 
 async function request(path, { method = 'GET', body = null, timeoutMs = 8000 } = {}) {
+  // Frontend-only demo: answer locally, no network.
+  if (isDemoMode()) {
+    await new Promise((r) => setTimeout(r, 250));
+    return mockApiResponse(path, { method, body });
+  }
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
   try {

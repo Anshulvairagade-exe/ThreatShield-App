@@ -1,12 +1,11 @@
 import React from 'react';
 import { useApp } from '../context/AppContext';
-import { apiGet, isBackendConfigured } from '../services/api/client.js';
+import { apiGet, isBackendConfigured, isDemoMode } from '../services/api/client.js';
 import { triggerRefresh, useEventStream } from '../hooks/useApi.js';
 
 function useHealth() {
   const [health, setHealth] = React.useState(null);
   React.useEffect(() => {
-    if (!isBackendConfigured()) return;
     let cancelled = false;
     apiGet('/api/v1/health').then((h) => { if (!cancelled) setHealth(h); }).catch(() => {});
     return () => { cancelled = true; };
@@ -25,7 +24,7 @@ export default function TopBar() {
   const runSearch = async (e) => {
     e.preventDefault();
     const q = query.trim().toLowerCase();
-    if (!q || !isBackendConfigured()) { setResults(null); return; }
+    if (!q) { setResults(null); return; }
     setSearching(true);
     try {
       const [incs, alerts, assets] = await Promise.all([
@@ -53,9 +52,10 @@ export default function TopBar() {
       <div className="ts-topbar-left">
         <span className="ts-env">
           <span className={`ts-conn ${health ? 'ok' : 'down'}`}>
-            <span className="dot" />{health ? 'Connected' : 'Offline'}
+            <span className="dot" />{health ? (isDemoMode() ? 'Demo data' : 'Connected') : 'Offline'}
           </span>
         </span>
+        {isDemoMode() && <span className="ts-live"><span className="ts-live-dot" />DEMO</span>}
         {live && <span className="ts-live"><span className="ts-live-dot" />LIVE</span>}
       </div>
       <form className="ts-search" onSubmit={runSearch} role="search">

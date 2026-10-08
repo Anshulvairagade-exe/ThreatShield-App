@@ -1,5 +1,5 @@
 import React from 'react';
-import { isBackendConfigured } from '../services/api/client.js';
+import { isBackendConfigured, isDemoMode } from '../services/api/client.js';
 
 /**
  * useApi(fetchFn, deps) — backend truth with honest states.
@@ -25,7 +25,7 @@ export function useApi(fetchFn, deps = []) {
 
   React.useEffect(() => {
     let cancelled = false;
-    if (!isBackendConfigured()) {
+    if (!isBackendConfigured() && !isDemoMode()) {
       setLoading(false);
       setError('backend not configured (VITE_API_BASE_URL unset)');
       return;

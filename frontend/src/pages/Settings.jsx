@@ -1,7 +1,7 @@
 import React from 'react';
 import { useApp } from '../context/AppContext';
 import { useApi } from '../hooks/useApi.js';
-import { apiGet, isBackendConfigured } from '../services/api/client.js';
+import { apiGet, isBackendConfigured, isDemoMode } from '../services/api/client.js';
 import { ConnectionState, LoadingState, PageHeader } from '../components/ui.jsx';
 import ContractsPage from './ContractsPage.jsx';
 
@@ -15,7 +15,10 @@ export default function Settings() {
       <PageHeader title="Settings" sub="Environment, data sources and API reference" />
       <div className="ts-card ts-card-pad" style={{ marginBottom: 12, maxWidth: 640 }}>
         <div className="ts-section-title">Backend connection</div>
-        {!isBackendConfigured() && (
+        {isDemoMode() && (
+          <p className="ts-small ts-muted">Demo mode — running on built-in portfolio data. Set VITE_API_BASE_URL to connect a live backend.</p>
+        )}
+        {!isBackendConfigured() && !isDemoMode() && (
           <p className="ts-small ts-muted">VITE_API_BASE_URL is unset — the UI renders empty states instead of estimates.</p>
         )}
         {health.loading && <LoadingState label="Checking backend…" />}
@@ -33,9 +36,11 @@ export default function Settings() {
       <div className="ts-card ts-card-pad" style={{ marginBottom: 12, maxWidth: 640 }}>
         <div className="ts-section-title">Data policy</div>
         <p className="ts-small ts-muted">
-          Production views display backend truth only. When the backend is unreachable they show
+          {isDemoMode()
+            ? 'Portfolio demo build: every view above runs on curated dummy data (no live backend). Connect VITE_API_BASE_URL for production truth.'
+            : `Production views display backend truth only. When the backend is unreachable they show
           empty states — never fabricated alerts, scores or coverage. Demo data exists solely in
-          the Attack Replay simulation lab and is labelled as such.
+          the Attack Replay simulation lab and is labelled as such.`}
         </p>
       </div>
       <div className="ts-card ts-card-pad" style={{ maxWidth: 640 }}>
