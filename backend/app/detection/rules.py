@@ -116,7 +116,7 @@ class RepeatedFailedLoginsRule(BaseRule):
     confidence = 0.75
     mitre = ["T1110"]
     description = "N failed AUTH logins for same user/host inside a sliding window"
-    THRESHOLD = 5
+    THRESHOLD = 1
     WINDOW = timedelta(minutes=10)
 
     def __init__(self):
